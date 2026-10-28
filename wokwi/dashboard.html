@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YELODING — Cold Chain Sender Console</title>
+<script src="https://unpkg.com/mqtt@5/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- NouvelR is proprietary — Inter is the documented Renault substitute per DESIGN.md § Note on Font Substitutes -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="liquid-glass.js"></script>
+<style>
+/* Hallmark · pre-emit critique: P5 H4 E5 S5 R4 V4
+ * design.md-managed: Renault design system (DESIGN.md @ project root)
+ * system: canvas #fff · surface-dark #000 · primary #ffed00 (Sunlight Yellow)
+ *         ink #000 · mute #666 · hairline #f2f2f2 · hairline-strong #000
+ * type:   NouvelR → Inter · weight 400/600/700 · lineHeight tight (0.95–1.5)
+ * shape:  rounded.none 0px on cards/inputs · rounded.xs 2px on tags/buttons
+ *         NO pill shapes — Renault is square-edged
+ * motion: transform + opacity only · 200ms ease · reduced-motion respected
+ * inferred: audience = student demo · use = monitor+control · tone = utilitarian-automotive
+ */
+
+/* ── tokens ─────────────────────────────────────────────────── */
+:root {
+  /* brand */
+  --color-primary:     #ffed00;
+  --color-primary-deep:#e6d200;
+  --color-on-primary:  #000000;
+
+  /* text */
+  --color-ink:         #000000;
+  --color-body:        #222222;
+  --color-mute:        #666666;
+  --color-ash:         #8a8a8a;
+
+  /* surfaces */
+  --color-canvas:      #ffffff;
+  --color-surface-soft:#f7f7f7;
+  --color-surface-dark:#000000;
+  --color-surface-deep:#111111;
+
+  /* borders */
+  --color-hairline:    #f2f2f2;
+  --color-hairline-strong: #000000;
+
+  /* semantic */
+  --color-error:       #be6464;
+  --color-warning:     #f0ad4e;
+  --color-success:     #8dc572;
+
+  /* shape */
+  --radius-none:   0px;
+  --radius-xs:     2px;
+  --radius-sm:     3px;
+  --radius-md:     4px;
+
+  /* spacing (4-pt scale) */
+  --space-xxs: 4px;
+  --space-xs:  8px;
+  --space-sm:  12px;
+  --space-md:  16px;
+  --space-lg:  20px;
+  --space-xl:  24px;
+  --space-xxl: 32px;
+
+  /* typography */
+  --font: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+
+  /* elevation — Renault: almost-flat, hairline-shadow only */
+  --shadow-card: 0 0 0 1px var(--color-hairline);
+  --shadow-band: 0 1px 0 var(--color-hairline-strong);
+}
+
+/* ── reset ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+html, body { overflow-x: clip; }
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: 400 17px/1.5 var(--font);
+  letter-spacing: 0;
+}
+
+/* ── type scale (NouvelR → Inter subset) ───────────────── */
+h1 {
+  font: 700 30px/0.95 var(--font);
+  letter-spacing: 0;
+}
+h2 {
+  font: 700 12px/1.45 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-mute);
+  margin-bottom: var(--space-xs);
+}
+
+/* ── bands (header / footer) — surface-dark ─────────────────── */
+.band {
+  background: var(--color-surface-dark);
+  color: var(--color-canvas);
+  padding: var(--space-sm) var(--space-xl);
+  border-bottom: 1px solid #222;
+}
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+}
+.top .sub {
+  color: rgba(255,255,255,0.58);
+  font-size: 15px;
+  margin-top: 2px;
+}
+.conn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 15px;
+  color: rgba(255,255,255,0.58);
+}
+.fresh { color: rgba(255,255,255,0.58); font-size: 14px; }
+.fresh.stale { color: var(--color-warning); }
+
+/* ── status dot ──────────────────────────────────────────────── */
+.dot {
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: #444;
+  display: inline-block; flex: none;
+}
+.dot.on   { background: var(--color-success); }
+.dot.warn { background: var(--color-warning); }
+.dot.bad  { background: var(--color-error); }
+.dot.comp-on { background: var(--color-primary); }
+.band .dot { box-shadow: 0 0 0 2px rgba(255,255,255,0.25); }
+
+/* ── shell ───────────────────────────────────────────────────── */
+.shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: var(--space-sm) var(--space-xl) var(--space-xl);
+}
+
+/* ── connection bar ──────────────────────────────────────────── */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: flex-end;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-none);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+.bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 14px;
+  color: var(--color-mute);
+}
+.bar label.grow { flex: 1 1 240px; }
+
+/* ── inputs ──────────────────────────────────────────────────── */
+input {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-none);
+  color: var(--color-ink);
+  font: 400 16px var(--font);
+  padding: 11px 14px;
+  min-width: 0; width: 100%;
+  transition: border-color 0.2s ease;
+}
+input:focus { border-color: var(--color-ink); outline: none; }
+input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+/* ── buttons (Renault: xs radius, no pill) ───────────────────── */
+.btn {
+  font: 700 16.5px/1.0 var(--font);
+  letter-spacing: 0.144px;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-ink);
+  border-radius: var(--radius-xs);
+  padding: 14px 24px;
+  height: 52px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.btn:hover { background: var(--color-surface-soft); }
+.btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+/* primary = yellow fill */
+.btn.primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.btn.primary:hover { background: var(--color-primary-deep); border-color: var(--color-primary-deep); }
+
+/* danger outline */
+.btn.danger:hover { border-color: var(--color-error); color: var(--color-error); background: rgba(190,100,100,0.05); }
+
+/* mode active = inverted (secondary-dark) */
+.btn.mode.is-active {
+  background: var(--color-surface-dark);
+  border-color: var(--color-surface-dark);
+  color: var(--color-canvas);
+}
+
+/* small buttons for control groups */
+.btn.sm { height: 44px; padding: 9px 18px; font-size: 15px; }
+
+/* ── grid ────────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+/* ── cards (Renault: flat, 1px hairline, no radius) ─────────── */
+.card {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: var(--radius-none);
+  padding: var(--space-sm) var(--space-md);
+  min-width: 0;
+}
+
+/* yellow top-edge accent on card — signature Renault detail */
+.card::before {
+  content: '';
+  display: block;
+  height: 3px;
+  background: var(--color-primary);
+  margin: calc(-1 * var(--space-sm)) calc(-1 * var(--space-md)) var(--space-sm);
+}
+
+.ro    { grid-column: span 1; }
+.state { grid-column: span 1; }
+.power { grid-column: span 1; }
+.w2    { grid-column: span 2; }
+
+/* ── metric display ────────────────────────────────────── */
+.big {
+  font: 700 44px/1.2 var(--font);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  margin-top: var(--space-xxs);
+}
+.big small { font-size: 18px; color: var(--color-mute); font-weight: 400; margin-left: 5px; }
+.cap { font-size: 14px; color: var(--color-mute); margin-top: 2px; }
+
+/* ── tag (battery status, small label) ──────────────────────── */
+.tag {
+  display: inline-block;
+  font: 700 12px/1.45 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  margin-top: var(--space-xs);
+  border: 1px solid var(--color-hairline-strong);
+  color: var(--color-mute);
+  background: var(--color-surface-soft);
+}
+.tag.low  { background: rgba(240,173,78,0.18); border-color: var(--color-warning); color: var(--color-ink); }
+.tag.crit { background: var(--color-error); border-color: var(--color-error); color: #fff; }
+
+/* ── state badge ─────────────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  font: 700 14px/1.0 var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 8px 16px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--color-hairline-strong);
+  color: var(--color-mute);
+  background: var(--color-surface-soft);
+}
+.badge.ok   { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-on-primary); }
+.badge.warn { background: rgba(240,173,78,0.22); border-color: var(--color-warning); color: var(--color-ink); }
+.badge.info { background: var(--color-surface-soft); border-color: var(--color-hairline-strong); color: var(--color-ink); }
+.badge.bad  { background: rgba(190,100,100,0.08); border-color: var(--color-error); color: var(--color-error); }
+.badge.crit { background: var(--color-error); border-color: var(--color-error); color: #fff; }
+
+/* ── row (label + meter + value) ────────────────────────────── */
+.row {
+  display: flex; align-items: center; gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  font-size: 15px; color: var(--color-mute);
+}
+.row .val { margin-left: auto; color: var(--color-ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ── meters ──────────────────────────────────────────────────── */
+.meter {
+  flex: 1 1 auto; min-width: 40px; height: 9px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-none);
+  overflow: hidden;
+}
+.meter i {
+  display: block; height: 100%; width: 0%;
+  background: var(--color-ink);
+  transition: width 0.3s ease;
+}
+.meter i.hot    { background: var(--color-error); }
+.meter i.warnbg { background: var(--color-warning); }
+.meter.tall { height: 14px; margin-top: var(--space-xs); }
+
+/* ── chart card ─────────────────────────────────────── */
+.chartcard { grid-column: span 2; }
+.chartwrap { position: relative; height: 340px; }
+
+/* ── controls ────────────────────────────────────────────────── */
+.controls { grid-column: span 1; }
+.grp { margin-bottom: var(--space-lg); }
+.grp .lbl {
+  font: 700 12px/1.45 var(--font);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--color-mute); margin-bottom: var(--space-xs);
+}
+.btnrow { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.btnrow.scn { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); }
+.btn.scn { width: 100%; font-size: 14.5px; }
+@keyframes chainflash {
+  0%, 100% { box-shadow: var(--shadow-card); }
+  40%      { box-shadow: 0 0 0 3px var(--color-primary); }
+}
+.chain.flash { animation: chainflash 1.1s ease 3; }
+.sp.sim { margin-bottom: 6px; }
+.sp.sim input[type=range] { width: auto; flex: 1; min-width: 0; padding: 0; border: none; background: transparent; height: 24px; accent-color: var(--color-primary); }
+.sp { display: flex; gap: var(--space-xs); align-items: center; }
+.sp input { width: 84px; padding: 9px 11px; height: 44px; }
+.sp .u { color: var(--color-mute); font-size: 15px; }
+.note { font-size: 14px; color: var(--color-mute); margin-top: var(--space-xs); }
+
+/* ── event log ───────────────────────────────────────────────── */
+.events { grid-column: span 2; }
+.elist {
+  max-height: 340px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-xs);
+}
+.elist .ev {
+  border-left: 3px solid var(--color-hairline-strong);
+  padding: 2px 0 2px 10px; font-size: 15px;
+}
+.elist .ev b { color: var(--color-ink); font-weight: 700; }
+.elist .ev .t { color: var(--color-mute); }
+.elist .ev.crit { border-color: var(--color-error); }
+.elist .ev.bad  { border-color: var(--color-error); }
+.elist .ev.warn { border-color: var(--color-warning); }
+.elist .empty   { color: var(--color-mute); font-size: 15px; }
+
+/* ── hash chain ──────────────────────────────────────────────── */
+.chain { grid-column: span 1; }
+.chain ol { list-style: none; }
+.chain li {
+  font-size: 15px; padding: 4px 0;
+  border-bottom: 1px solid var(--color-hairline);
+  font-variant-numeric: tabular-nums;
+}
+.chain li b  { color: var(--color-ink); font-weight: 700; }
+.chain li .sq { color: var(--color-mute); }
+.chain .hint { font-size: 14px; color: var(--color-mute); margin-top: var(--space-sm); }
+
+/* ── auth gate ───────────────────────────────────────────────── */
+#auth-gate {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--color-surface-dark);
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: var(--space-md);
+}
+#auth-gate .logo {
+  font: 700 12px/1.45 var(--font);
+  text-transform: uppercase; letter-spacing: 1px;
+  color: var(--color-primary); margin-bottom: var(--space-xs);
+}
+#auth-gate h2 {
+  font: 700 26px/1.0 var(--font);
+  color: var(--color-canvas);
+  text-transform: none; letter-spacing: 0;
+  margin-bottom: 0;
+}
+#auth-gate p {
+  font-size: 15px; color: rgba(255,255,255,0.5);
+  max-width: 380px; text-align: center; line-height: 1.5;
+}
+#auth-gate .field {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 340px;
+}
+#auth-gate .field label {
+  font: 700 12px/1.45 var(--font);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: rgba(255,255,255,0.45);
+}
+#auth-gate input {
+  background: #1a1a1a;
+  border-color: #333;
+  color: var(--color-canvas);
+}
+#auth-gate input:focus { border-color: var(--color-primary); }
+#auth-gate .err {
+  font-size: 14px; color: var(--color-error);
+  min-height: 18px;
+}
+
+/* ── map improvements ────────────────────────────────────────── */
+.mapcard { grid-column: span 4; }
+.mapwrap { height: 420px; overflow: hidden; position: relative; z-index: 0; }
+.map-meta {
+  display: flex; flex-wrap: wrap; gap: var(--space-md);
+  margin-top: var(--space-xs); font-size: 14px;
+}
+.map-meta span { color: var(--color-mute); }
+.map-meta strong { color: var(--color-ink); font-weight: 700; }
+.map-legend {
+  display: flex; align-items: center; gap: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+.map-legend .li {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 14px; color: var(--color-mute);
+}
+.map-legend .li i {
+  display: block; width: 24px; height: 3px;
+  background: var(--color-primary);
+}
+.map-legend .li i.planned {
+  background: transparent;
+  border-top: 2px dashed #888;
+}
+.map-legend .li i.track {
+  background: var(--color-ink);
+}
+
+/* ── footer ──────────────────────────────────────────────────── */
+.foot { margin-top: var(--space-xl); border-top: 1px solid #222; }
+.foot p { font-size: 14px; color: rgba(255,255,255,0.45); }
+
+/* ── responsive (DESIGN.md breakpoints: 480 / 1023) ─────────── */
+@media (max-width: 1023px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .chartcard, .events { grid-column: span 2; }
+  .mapcard { grid-column: span 2; }
+}
+@media (max-width: 480px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .chartcard, .events { grid-column: span 1; }
+  .mapcard { grid-column: span 1; }
+  .big { font-size: 28px; }
+  .w2 { grid-column: span 1; }
+  .bar { flex-direction: column; align-items: stretch; }
+  .shell { padding: var(--space-xs) var(--space-sm) var(--space-sm); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── sender-only auth gate ─────────────────────────────────── -->
+<div id="auth-gate">
+  <div class="logo">YELODING · Cold Chain System · Sender Access</div>
+  <h2>Identity Verification</h2>
+  <p>This dashboard is restricted to authorized senders. Enter the shipment access code.</p>
+  <div class="field">
+    <label>Sender Access Code</label>
+    <input id="authInput" type="password" placeholder="Enter access code…" autocomplete="off">
+  </div>
+  <div class="err" id="authErr"></div>
+  <button class="btn primary" id="authBtn">Sign in →</button>
+  <p style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:8px">
+    Demo: code = <code style="color:rgba(255,255,255,0.4)">coldchain2025</code>
+  </p>
+</div>
+
+<header class="band top">
+  <div>
+    <h1>YELODING · Cold Chain Console</h1>
+    <p class="sub">Remote monitor &amp; control over MQTT · pairs with the Wokwi ESP32 simulation</p>
+  </div>
+  <div class="conn">
+    <span id="connDot" class="dot"></span><span id="connText">offline</span>
+    <span class="fresh" id="fresh"></span>
+  </div>
+</header>
+
+<div class="shell">
+<section class="bar">
+  <label class="grow">Broker (WebSocket URL)
+    <input id="url" value="wss://broker.hivemq.com:8884/mqtt" spellcheck="false">
+  </label>
+  <label class="grow">Topic prefix (must match TOPIC_BASE in sketch.ino)
+    <input id="base" value="coldchain/box001" spellcheck="false">
+  </label>
+  <button id="btnConn" class="btn primary">Connect</button>
+</section>
+
+<main class="grid">
+
+  <section class="card ro"><h2>Payload top</h2>
+    <div class="big"><span id="t1">--.-</span><small>°C</small></div>
+    <div class="cap">DS18B20 T1 · top-centre</div>
+  </section>
+
+  <section class="card ro"><h2>Payload bottom</h2>
+    <div class="big"><span id="t2">--.-</span><small>°C</small></div>
+    <div class="cap">DS18B20 T2 · bottom-centre</div>
+  </section>
+
+  <section class="card ro"><h2>Payload mid-wall</h2>
+    <div class="big"><span id="t3">--.-</span><small>°C</small></div>
+    <div class="cap">DS18B20 T3 · mid wall</div>
+  </section>
+
+  <section class="card ro"><h2>Ambient</h2>
+    <div class="big"><span id="amb">--</span><small>°C</small></div>
+    <div class="cap">DHT22 · outside air (drag its slider)</div>
+  </section>
+
+  <section class="card ro w2"><h2>Battery</h2>
+    <div class="big"><span id="batt">--.-</span><small>V</small></div>
+    <div class="cap">12 V LiFePO₄ · machine-tier floor · LOW &lt; 11.0 · CRIT &lt; 10.5</div>
+    <span class="tag" id="battTag">—</span>
+  </section>
+
+  <section class="card state"><h2>State</h2>
+    <span class="badge" id="badge">WAITING</span>
+    <div class="row"><span>Compressor</span>
+      <span id="compDot" class="dot"></span>
+      <span class="val" id="compTxt">—</span></div>
+    <div class="row"><span>Excursion</span>
+      <div class="meter"><i id="excBar"></i></div>
+      <span class="val" id="excTxt">0.0/15m</span></div>
+  </section>
+
+  <section class="card power"><h2>Cold reserve (PCM)</h2>
+    <div class="big"><span id="pcm">--</span><small>%</small></div>
+    <div class="meter tall"><i id="pcmBar"></i></div>
+    <div class="row"><span>Passive holdover left</span><span class="val" id="hold">—</span></div>
+    <div class="cap">full PCM = 24 story-hours at ΔT = 35 K</div>
+  </section>
+
+  <section class="card chartcard"><h2>Temperature · story time</h2>
+    <div class="chartwrap"><canvas id="chart"></canvas></div>
+  </section>
+
+  <section class="card events"><h2>Event log</h2>
+    <div class="elist" id="events"><p class="empty">Waiting for events…</p></div>
+  </section>
+
+  <section class="card chain w2"><h2>Hash chain</h2>
+    <ol id="chain"><li class="sq">waiting for telemetry…</li></ol>
+    <p class="hint">Each record's fingerprint includes the previous one — editing any old record breaks every link after it (tamper-evident).</p>
+  </section>
+
+  <section class="card controls w2"><h2>Controls</h2>
+    <div class="grp">
+      <div class="lbl">Compressor mode</div>
+      <div class="btnrow">
+        <button class="btn sm mode" data-mode="auto" disabled>Auto</button>
+        <button class="btn sm mode" data-mode="on" disabled>Force on</button>
+        <button class="btn sm mode danger" data-mode="off" disabled>Force off</button>
+      </div>
+      <div class="note">Force-on is blocked by the box itself when mains or battery is down.</div>
+    </div>
+    <div class="grp">
+      <div class="lbl">Setpoints (hysteresis)</div>
+      <div class="sp">
+        <input id="onT" type="number" step="0.5" min="2" max="7.5" value="7">
+        <span class="u">ON ≥ °C</span>
+        <input id="offT" type="number" step="0.5" min="2" max="7" value="5">
+        <span class="u">OFF ≤ °C</span>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn sm" id="btnSp" disabled>Apply setpoints</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl">Actions</div>
+      <div class="btnrow">
+        <button class="btn sm" id="btnMute" disabled>Mute buzzer</button>
+        <button class="btn sm" id="btnHand" disabled>Custody handover</button>
+        <button class="btn sm" id="btnPing" disabled>Refresh now</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl">Scenario runner (S1–S8)</div>
+      <div class="btnrow scn">
+        <button class="btn sm scn" id="scnS1" disabled>S1 · Normal</button>
+        <button class="btn sm scn" id="scnS2" disabled>S2 · Hysteresis</button>
+        <button class="btn sm scn" id="scnS3" disabled>S3 · Power loss</button>
+        <button class="btn sm scn" id="scnS4" disabled>S4 · Door open</button>
+        <button class="btn sm scn" id="scnS5" disabled>S5 · Excursion</button>
+        <button class="btn sm scn" id="scnS6" disabled>S6 · Battery low</button>
+        <button class="btn sm scn" id="scnS7" disabled>S7 · Handover</button>
+        <button class="btn sm scn" id="scnS8" disabled>S8 · Tamper test</button>
+      </div>
+      <div class="note">Each button pins the simulated inputs over MQTT. S8 flashes the hash chain: edit an old REC line in the serial log and every later fingerprint stops matching.</div>
+    </div>
+    <div class="grp">
+      <div class="lbl">Simulator inputs</div>
+      <div class="sp sim"><input id="simT1" type="range" min="-20" max="45" step="0.5" value="4.5" disabled><span class="u" id="simT1v">T1 4.5 °C</span></div>
+      <div class="sp sim"><input id="simT2" type="range" min="-20" max="45" step="0.5" value="4.8" disabled><span class="u" id="simT2v">T2 4.8 °C</span></div>
+      <div class="sp sim"><input id="simT3" type="range" min="-20" max="45" step="0.5" value="4.9" disabled><span class="u" id="simT3v">T3 4.9 °C</span></div>
+      <div class="sp sim"><input id="simAmb" type="range" min="10" max="45" step="0.5" value="40" disabled><span class="u" id="simAmbv">AMB 40.0 °C</span></div>
+      <div class="sp sim"><input id="simBatt" type="range" min="9" max="12.8" step="0.1" value="12.4" disabled><span class="u" id="simBattv">BAT 12.4 V</span></div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="btn sm" id="tglMains" disabled>Mains · OK</button>
+        <button class="btn sm" id="tglLid" disabled>Lid · closed</button>
+      </div>
+      <div class="note">Sliders pin a value live over MQTT; the buttons flip the mains switch / lid. S1 · Normal clears every pin.</div>
+    </div>
+  </section>
+
+  <section class="card mapcard"><h2>Location · Sender View</h2>
+    <div id="map" class="mapwrap"></div>
+    <div class="map-meta">
+      <span>Position: <strong id="gpsCoord">—</strong></span>
+      <span>Speed: <strong id="gpsKph">—</strong></span>
+      <span>Satellites: <strong id="gpsSat">—</strong></span>
+      <span>Status: <strong id="gpsStatus">waiting for a fix…</strong></span>
+    </div>
+    <div class="map-legend">
+      <div class="li"><i class="planned"></i>Planned route</div>
+      <div class="li"><i class="track"></i>Actual track</div>
+      <div class="li"><i></i>Box position</div>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<footer class="band foot">
+  <p>Public-broker demo: telemetry is world-readable and commands are unauthenticated.
+     Use a unique topic prefix; a real deployment uses an authenticated broker over TLS
+     with per-device keys. → sketch.ino · TOPIC_BASE</p>
+</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+
+/* ── sender-only auth gate ───────────────────────────────────── */
+// ponytail: demo uses a static passphrase — real deploy uses a server-issued token.
+//           Upgrade path: POST /auth -> JWT stored in sessionStorage, validated on every MQTT connect.
+const AUTH_KEY = "coldchain2025";
+const SESSION_KEY = "cc_auth";
+
+function checkAuth() {
+  if (sessionStorage.getItem(SESSION_KEY) === "1") {
+    $('auth-gate').style.display = 'none';
+    initApp();
+  }
+}
+
+$('authBtn').addEventListener('click', doAuth);
+$('authInput').addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
+
+function doAuth() {
+  if ($('authInput').value.trim() === AUTH_KEY) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    $('auth-gate').style.display = 'none';
+    initApp();
+  } else {
+    $('authErr').textContent = 'Wrong code. Try again.';
+    $('authInput').value = '';
+    $('authInput').focus();
+  }
+}
+
+/* ── state ───────────────────────────────────────────────────────── */
+const DEFAULT_URL  = "wss://broker.hivemq.com:8884/mqtt";
+const DEFAULT_BASE = "coldchain/box001";
+let client = null, base = DEFAULT_BASE, isConnected = false;
+let lastMsgAt = 0;
+const chainList = [];
+const MAX_POINTS = 180;
+
+// scenario runner state (S1-S8)
+let doorPinned = false;                   // lid pin, shared by S4 and the Lid button
+let mainsPinned = false;                  // mains pin, shared by S3 and the Mains button
+const BATT_STEPS = [10.8, 10.3, 12.4];    // S6: low -> critical -> back to normal
+let battStep = 0;
+const HYST_STEPS = [7.8, 5.8, 4.2];       // S2: ON above 7 -> stays on (lag) -> OFF below 5
+let hystStep = 0;
+
+// Planned route waypoints — mirrors GPS_ROUTE[] in sketch.ino
+// Simongan Port Semarang → Kudus via Pantura
+const PLANNED_ROUTE = [
+  [-6.9550, 110.4240], [-6.9521, 110.4268], [-6.9493, 110.4312],
+  [-6.9470, 110.4375], [-6.9452, 110.4445], [-6.9438, 110.4530],
+  [-6.9432, 110.4620], [-6.9429, 110.4740], [-6.9424, 110.4880],
+  [-6.9418, 110.5010], [-6.9408, 110.5180], [-6.9392, 110.5370],
+  [-6.9380, 110.5530], [-6.9368, 110.5710], [-6.9352, 110.5940],
+  [-6.9330, 110.6190], [-6.9305, 110.6450], [-6.9278, 110.6720],
+  [-6.9248, 110.7000], [-6.9215, 110.7280], [-6.9180, 110.7540],
+  [-6.9150, 110.7750], [-6.9125, 110.7930], [-6.9105, 110.8090],
+];
+
+const ORIGIN      = PLANNED_ROUTE[0];
+const DESTINATION = PLANNED_ROUTE[PLANNED_ROUTE.length - 1];
+
+/* ── chart ─────────────────────────────────────────────────────────── */
+const chart = new Chart($('chart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'T1 top-centre',    data: [], borderColor: '#000000', borderWidth: 2, pointRadius: 0, tension: .25 },
+    { label: 'T2 bottom-centre', data: [], borderColor: '#666666', borderWidth: 2, pointRadius: 0, tension: .25 },
+    { label: 'T3 mid wall',      data: [], borderColor: '#8a8a8a', borderWidth: 1.5, pointRadius: 0, tension: .25 },
+    { label: 'Ambient',    data: [], borderColor: '#f0ad4e', borderWidth: 1.5, borderDash: [6,4], pointRadius: 0, tension: .2 },
+    { label: '8 °C limit', data: [], borderColor: '#be6464', borderWidth: 1, borderDash: [2,4], pointRadius: 0 },
+    { label: '2 °C limit', data: [], borderColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderDash: [2,4], pointRadius: 0 }
+  ]},
+  options: {
+    animation: false, responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'nearest', intersect: false },
+    scales: {
+      x: { ticks: { color: '#666666', maxTicksLimit: 8,
+                    font: { family: 'Inter, Arial, sans-serif', size: 10 } },
+           grid: { color: 'rgba(0,0,0,0.06)' } },
+      y: { suggestedMin: 0, suggestedMax: 45,
+           ticks: { color: '#666666', font: { family: 'Inter, Arial, sans-serif', size: 10 } },
+           grid: { color: 'rgba(0,0,0,0.06)' } }
+    },
+    plugins: { legend: { labels: { color: '#222222',
+                                   font: { family: 'Inter, Arial, sans-serif', size: 10 },
+                                   boxWidth: 14 } } }
+  }
+});
+
+/* ── app init (runs after auth) ───────────────────────────────────── */
+let map, plannedLine, trackLine, boxMarker, originMarker, destMarker;
+const track = [];
+
+function initApp() {
+  initMap();
+  initButtons();
+  startFreshness();
+}
+
+function initMap() {
+  const midLat = (ORIGIN[0] + DESTINATION[0]) / 2;
+  const midLon = (ORIGIN[1] + DESTINATION[1]) / 2;
+
+  map = L.map('map', { zoomControl: true, attributionControl: true })
+         .setView([midLat, midLon], 11);
+
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18
+  }).addTo(map);
+
+  // Planned route — dashed grey
+  plannedLine = L.polyline(PLANNED_ROUTE, {
+    color: '#888', weight: 2, dashArray: '6 6', opacity: 0.7
+  }).addTo(map);
+
+  // Actual GPS track — solid black (Renault ink)
+  trackLine = L.polyline([], { color: '#000000', weight: 3 }).addTo(map);
+
+  // Custom icons
+  const iconOpts = size => L.divIcon({
+    className: '',
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;
+           background:#ffed00;border:2px solid #000;
+           box-shadow:0 1px 4px rgba(0,0,0,0.4)"></div>`,
+    iconAnchor: [size/2, size/2]
+  });
+
+  originMarker = L.marker(ORIGIN, { icon: iconOpts(10) })
+    .addTo(map)
+    .bindTooltip('Pengiriman — Pelabuhan Simongan', { permanent: false });
+
+  destMarker = L.marker(DESTINATION, { icon: iconOpts(10) })
+    .addTo(map)
+    .bindTooltip('Tujuan — Puskesmas Kudus', { permanent: false });
+
+  const boxIcon = L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;border-radius:2px;
+           background:#ffed00;border:2px solid #000;
+           box-shadow:0 1px 6px rgba(0,0,0,0.5);
+           display:flex;align-items:center;justify-content:center;">
+           <div style="width:6px;height:6px;background:#000"></div></div>`,
+    iconAnchor: [8, 8]
+  });
+  boxMarker = L.marker(ORIGIN, { icon: boxIcon, zIndexOffset: 1000 })
+    .addTo(map)
+    .bindTooltip('Active box', { permanent: false });
+
+  // Fit map to planned route bounds
+  map.fitBounds(plannedLine.getBounds(), { padding: [32, 32] });
+  // Leaflet measured its size while fonts / liquid-glass were still settling — re-measure
+  setTimeout(() => map.invalidateSize(), 350);
+  window.addEventListener('resize', () => map.invalidateSize());
+}
+
+function updateMap(lat, lon, kph, sat) {
+  const last = track[track.length - 1];
+  if (last && (Math.abs(lat - last[0]) + Math.abs(lon - last[1])) > 0.02) {
+    track.length = 0;                      // shipment restarted at the port: fresh track line
+  }
+  track.push([lat, lon]);
+  if (track.length > 500) track.shift();
+  trackLine.setLatLngs(track);
+  boxMarker.setLatLng([lat, lon]);
+
+  // Auto-pan if box goes off screen, but don’t force-recenter every tick
+  if (!map.getBounds().contains([lat, lon])) {
+    map.panTo([lat, lon]);
+  }
+
+  $('gpsCoord').textContent = lat.toFixed(5) + ', ' + lon.toFixed(5);
+  $('gpsKph').textContent   = kph + ' km/h';
+  $('gpsSat').textContent   = sat + ' satelit';
+  $('gpsStatus').textContent = 'Fix active';
+}
+
+/* ── connection ───────────────────────────────────────────────────────── */
+function setConn(mode, detail) {
+  const dot = $('connDot'), txt = $('connText'), btn = $('btnConn');
+  document.querySelectorAll('.btn.mode,.btn.scn,#btnSp,#btnMute,#btnHand,#btnPing,#simT1,#simT2,#simT3,#simAmb,#simBatt,#tglMains,#tglLid')
+    .forEach(b => b.disabled = (mode !== 'online'));
+  if      (mode === 'online')      { dot.className = 'dot on';   txt.textContent = 'MQTT connected'; btn.textContent = 'Disconnect'; }
+  else if (mode === 'connecting')  { dot.className = 'dot warn'; txt.textContent = 'connecting…';   btn.textContent = 'Connect'; }
+  else if (mode === 'error')       { dot.className = 'dot bad';  txt.textContent = 'error' + (detail ? ': ' + detail : ''); btn.textContent = 'Connect'; }
+  else                             { dot.className = 'dot';      txt.textContent = 'offline';       btn.textContent = 'Connect'; }
+}
+
+function connect() {
+  if (client) { try { client.end(true); } catch (e) {} client = null; }
+  const url = $('url').value.trim() || DEFAULT_URL;
+  base = ($('base').value.trim() || DEFAULT_BASE).replace(/\/+$/, '');
+  setConn('connecting');
+  try {
+    client = mqtt.connect(url, {
+      clientId: 'ccdash-' + Math.random().toString(16).slice(2, 10),
+      reconnectPeriod: 4000, connectTimeout: 8000
+    });
+  } catch (e) { setConn('error', e.message); return; }
+  client.on('connect', () => {
+    isConnected = true; setConn('online');
+    ['status', 'state', 'event', 'settings'].forEach(s => client.subscribe(base + '/' + s));
+  });
+  client.on('message',   onMessage);
+  client.on('error',     e  => setConn('error', e && e.message ? e.message : 'connection error'));
+  client.on('close',     () => { isConnected = false; setConn('offline'); });
+  client.on('reconnect', () => setConn('connecting'));
+}
+
+function disconnect() {
+  if (client) { try { client.end(true); } catch (e) {} }
+  client = null; isConnected = false; setConn('offline');
+}
+
+function cmd(obj) {
+  if (!isConnected || !client) return;
+  client.publish(base + '/cmd', JSON.stringify(obj));
+}
+
+/* ── incoming messages ───────────────────────────────────────────────────── */
+function onMessage(topic, msg) {
+  lastMsgAt = Date.now();
+  const suffix = topic.slice(base.length + 1);
+  let data = null;
+  try { data = JSON.parse(msg.toString()); } catch (e) { return; }
+  if      (suffix === 'state')    onState(data);
+  else if (suffix === 'event')    onEvent(data);
+  else if (suffix === 'settings') onSettings(data);
+  else if (suffix === 'status')   onStatus(msg.toString().trim());
+}
+
+const BADGE_CLASS = { OK:'ok', 'DOOR-OPEN':'warn', 'BATT-LOW':'warn',
+                      'PASSIVE-HOLD':'info', EXCURSION:'bad', QUARANTINE:'crit',
+                      'SENSOR-FLT':'crit', OFFLINE:'' };
+
+function onState(d) {
+  $('t1').textContent   = d.t1 <= -100 ? 'ERR' : d.t1.toFixed(1);
+  $('t2').textContent   = d.t2 <= -100 ? 'ERR' : d.t2.toFixed(1);
+  $('t3').textContent   = d.t3 === undefined ? '--.-' : (d.t3 <= -100 ? 'ERR' : d.t3.toFixed(1));
+  $('amb').textContent  = d.amb.toFixed(0);
+  $('batt').textContent = d.batt.toFixed(1);
+  const bt = $('battTag');
+  if      (d.batt < 10.5) { bt.textContent = 'CRITICAL'; bt.className = 'tag crit'; }
+  else if (d.batt < 11.0) { bt.textContent = 'LOW';      bt.className = 'tag low'; }
+  else                    { bt.textContent = 'OK';       bt.className = 'tag'; }
+
+  const badge = $('badge');
+  badge.textContent = d.state;
+  badge.className = 'badge ' + (BADGE_CLASS[d.state] || '');
+
+  $('compDot').className = 'dot ' + (d.comp ? 'comp-on' : '');
+  $('compTxt').textContent = d.comp ? 'RUNNING' : 'stopped';
+
+  const pct = Math.min(100, d.exc / 15 * 100);
+  const eb = $('excBar');
+  eb.style.width = pct + '%';
+  eb.className = pct > 60 ? 'hot' : (pct > 25 ? 'warnbg' : '');
+  $('excTxt').textContent = d.exc.toFixed(1) + '/15m';
+
+  $('pcm').textContent = d.pcm.toFixed(0);
+  const pb = $('pcmBar');
+  pb.style.width = d.pcm + '%';
+  pb.className = d.pcm < 20 ? 'hot' : (d.pcm < 45 ? 'warnbg' : '');
+  $('hold').textContent = d.hold >= 99 ? '≥ 99 h' : d.hold.toFixed(1) + ' h';
+
+  if (typeof d.lat === 'number' && typeof d.lon === 'number') {
+    updateMap(d.lat, d.lon, d.kph || 0, d.sat || 0);
+  }
+
+  chainList.push({ seq: d.seq, hash: d.hash });
+  if (chainList.length > 6) chainList.shift();
+  $('chain').innerHTML = chainList.slice().reverse()
+    .map((r, i) => '<li><b>' + r.hash + '</b>  <span class="sq">record #' + r.seq +
+                   (i === 0 ? ' · chain head' : '') + '</span></li>').join('');
+
+  pushChart(d);
+}
+
+function pushChart(d) {
+  const c = chart.data;
+  c.labels.push(d.t);
+  c.datasets[0].data.push(d.t1 <= -100 ? NaN : d.t1);
+  c.datasets[1].data.push(d.t2 <= -100 ? NaN : d.t2);
+  c.datasets[2].data.push((d.t3 === undefined || d.t3 <= -100) ? NaN : d.t3);
+  c.datasets[3].data.push(d.amb);
+  c.datasets[4].data.push(8);
+  c.datasets[5].data.push(2);
+  while (c.labels.length > MAX_POINTS) {
+    c.labels.shift();
+    c.datasets.forEach(ds => ds.data.shift());
+  }
+  chart.update('none');
+}
+
+const EV_CLASS = { 'QUARANTINE FLAGGED':'crit', 'EXCURSION START':'bad',
+                   'BATTERY LOW':'warn', 'DOOR OPEN':'warn' };
+
+function onEvent(d) {
+  const box = $('events');
+  const empty = box.querySelector('.empty'); if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'ev ' + (EV_CLASS[d.event] || '');
+  div.innerHTML = '<b>' + esc(d.event) + '</b> <span class="t">· t=' + esc(d.t) +
+                  ' · #' + d.seq + '</span><br>' + esc(d.note || '');
+  box.prepend(div);
+  while (box.children.length > 60) box.lastChild.remove();
+}
+
+function onSettings(d) {
+  document.querySelectorAll('.btn.mode').forEach(b =>
+    b.classList.toggle('is-active', b.dataset.mode === d.mode));
+  $('onT').value  = d.onT;
+  $('offT').value = d.offT;
+}
+
+function onStatus(s) {
+  if (s === 'offline') {
+    const badge = $('badge');
+    badge.textContent = 'OFFLINE';
+    badge.className = 'badge';
+    $('compTxt').textContent = '—';
+  }
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
+}
+
+/* ── buttons ───────────────────────────────────────────────────────────── */
+function initButtons() {
+  $('btnConn').addEventListener('click', () => isConnected ? disconnect() : connect());
+  document.querySelectorAll('.btn.mode').forEach(b =>
+    b.addEventListener('click', () => cmd({ cmd: 'mode', value: b.dataset.mode })));
+  $('btnSp').addEventListener('click', () => {
+    const on  = parseFloat($('onT').value);
+    const off = parseFloat($('offT').value);
+    if (isNaN(on) || isNaN(off)) return;
+    cmd({ cmd: 'setpoints', on: on, off: off });
+  });
+  $('btnMute').addEventListener('click', () => cmd({ cmd: 'mute' }));
+  $('btnHand').addEventListener('click', () => cmd({ cmd: 'handover' }));
+  $('btnPing').addEventListener('click',  () => cmd({ cmd: 'ping' }));
+
+  // ── scenario runner (S1-S8) + simulator inputs ──
+  const setLidUi = () => {
+    $('tglLid').textContent = doorPinned ? 'Lid · OPEN' : 'Lid · closed';
+    $('scnS4').textContent  = doorPinned ? 'S4 · Close lid' : 'S4 · Door open';
+  };
+
+  $('scnS1').addEventListener('click', () => {
+    cmd({ cmd: 'sim', reset: 1 });
+    hystStep = 0;        $('scnS2').textContent = 'S2 · Hysteresis';
+    battStep = 0;        $('scnS6').textContent = 'S6 · Battery low';
+    mainsPinned = false; $('tglMains').textContent = 'Mains · OK';
+    doorPinned = false;  setLidUi();
+  });
+  $('scnS2').addEventListener('click', () => {
+    const v = HYST_STEPS[hystStep];
+    cmd({ cmd: 'sim', t1: v, t2: v - 2 });
+    $('scnS2').textContent = 'S2 · ' + (hystStep === 0 ? 'Warm ' : hystStep === 1 ? 'Hold ' : 'Cool ')
+                           + v.toFixed(1) + ' °C';
+    hystStep = (hystStep + 1) % HYST_STEPS.length;
+  });
+  $('scnS3').addEventListener('click', () => {
+    mainsPinned = true;
+    cmd({ cmd: 'sim', mains: 0 });
+    $('tglMains').textContent = 'Mains · LOST';
+  });
+  $('scnS4').addEventListener('click', () => {
+    doorPinned = !doorPinned;
+    cmd({ cmd: 'sim', door: doorPinned ? 1 : 0 });
+    setLidUi();
+  });
+  $('scnS5').addEventListener('click', () => cmd({ cmd: 'sim', amb: 42, t1: 10, t2: 8.5 }));
+  $('scnS6').addEventListener('click', () => {
+    cmd({ cmd: 'sim', batt: BATT_STEPS[battStep] });
+    $('scnS6').textContent = 'S6 · Batt ' + BATT_STEPS[battStep].toFixed(1) + ' V';
+    battStep = (battStep + 1) % BATT_STEPS.length;
+  });
+  $('scnS7').addEventListener('click', () => cmd({ cmd: 'handover' }));
+  $('scnS8').addEventListener('click', () => {
+    const card = document.querySelector('.card.chain');
+    card.classList.remove('flash');
+    void card.offsetWidth;                 // restart the animation
+    card.classList.add('flash');
+    setTimeout(() => card.classList.remove('flash'), 3500);
+  });
+
+  // raw simulator inputs: sliders pin live values, buttons flip the switches
+  const bindRange = (id, key, fmt) => {
+    let t = null;
+    $(id).addEventListener('input', () => {
+      const v = parseFloat($(id).value);
+      $(id + 'v').textContent = fmt(v);
+      clearTimeout(t);
+      t = setTimeout(() => cmd({ cmd: 'sim', [key]: v }), 250);
+    });
+  };
+  bindRange('simT1',   't1',   v => 'T1 ' + v.toFixed(1) + ' °C');
+  bindRange('simT2',   't2',   v => 'T2 ' + v.toFixed(1) + ' °C');
+  bindRange('simT3',   't3',   v => 'T3 ' + v.toFixed(1) + ' °C');
+  bindRange('simAmb',  'amb',  v => 'AMB ' + v.toFixed(1) + ' °C');
+  bindRange('simBatt', 'batt', v => 'BAT ' + v.toFixed(1) + ' V');
+
+  $('tglMains').addEventListener('click', () => {
+    mainsPinned = !mainsPinned;
+    cmd({ cmd: 'sim', mains: mainsPinned ? 0 : 1 });
+    $('tglMains').textContent = mainsPinned ? 'Mains · LOST' : 'Mains · OK';
+  });
+  $('tglLid').addEventListener('click', () => {
+    doorPinned = !doorPinned;
+    cmd({ cmd: 'sim', door: doorPinned ? 1 : 0 });
+    setLidUi();
+  });
+}
+
+/* ── freshness ticker ─────────────────────────────────────────────────────── */
+function startFreshness() {
+  setInterval(() => {
+    const el = $('fresh');
+    if (!lastMsgAt) { el.textContent = ''; el.className = 'fresh'; return; }
+    const s = Math.round((Date.now() - lastMsgAt) / 1000);
+    el.textContent = 'updated ' + s + 's ago';
+    el.className = 'fresh' + (s > 10 ? ' stale' : '');
+  }, 1000);
+}
+
+/* ── liquid glass (progressive enhancement) ─────────────────────────── */
+if (window.liquidGlass) {
+  document.querySelectorAll('.card, .bar').forEach(el =>
+    liquidGlass(el, { scale: -70, chroma: 4, blur: 4, saturate: 1.4, fallbackBlur: 12 }));
+}
+
+/* ── boot ─────────────────────────────────────────────────────────────────── */
+checkAuth();
+</script>
+</body>
+</html>

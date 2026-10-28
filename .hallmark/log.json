@@ -1,0 +1,5 @@
+[
+  { "date": "2026-10-27", "macrostructure": "technical-diagram (SVG assembly, 4-view interactive)", "theme": "Renault system (DESIGN.md)", "enrichment": "E2 hand-built SVG", "brief": "Cold chain box assembly: isometric+cutaway+exploded+front, lid toggle" },
+    { "date": "2026-10-26", "macrostructure": "instrument-console (redesign in place)", "theme": "DESIGN.md system (Starbucks-inspired) + liquid-glass", "enrichment": "none", "brief": "Dashboard restyled to DESIGN.md tokens + liquid glass on cards/bar" },
+  { "date": "2026-10-26", "macrostructure": "instrument-console (utility page)", "theme": "Terminal (variant, ice-cyan accent)", "enrichment": "none", "brief": "Cold chain MQTT monitor + control dashboard" }
+]
