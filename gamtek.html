@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-/* YELODING gamtek · design.md Renault system (charcoal + sunlight yellow)
+/* YELODING gamtek · design.md Renault system (white + sunlight yellow)
  * sheets: general arrangement · wall section · cutaway isometric · front panel
  *         refrigerant loop · wiring single-line · control panel schematic
  * data: dimension.md §5-§8 · detail.md §1,§6-§7 · promptdesign.md · wokwi README
@@ -97,9 +97,9 @@ table.parts td.m { font-weight: 600; }
   <div class="dwg">
   <svg viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Arial, sans-serif">
     <defs>
-      <linearGradient id="gSkin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4a4c"/><stop offset="1" stop-color="#26262a"/></linearGradient>
-      <linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a5a5e"/><stop offset="1" stop-color="#3a3a3e"/></linearGradient>
-      <linearGradient id="gSide" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a2a2e"/><stop offset="1" stop-color="#161619"/></linearGradient>
+      <linearGradient id="gSkin" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e2e2e0"/></linearGradient>
+      <linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfbfa"/><stop offset="1" stop-color="#ececea"/></linearGradient>
+      <linearGradient id="gSide" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#efefed"/><stop offset="1" stop-color="#d4d4d2"/></linearGradient>
       <linearGradient id="gPV" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16233e"/><stop offset="1" stop-color="#0c1526"/></linearGradient>
     </defs>
     <!-- ground -->
@@ -184,7 +184,7 @@ table.parts td.m { font-weight: 600; }
     <line x1="252" y1="100" x2="524" y2="100" stroke="#0a1220" stroke-width="0.5"/>
     <line x1="252" y1="92" x2="546" y2="92" stroke="#0a1220" stroke-width="0.5"/>
     <!-- PV cover open 60° -->
-    <polygon points="263,90 581,90 623,55 305,55" fill="#33333a" stroke="#000"/>
+    <polygon points="263,90 581,90 623,55 305,55" fill="#fbfbfa" stroke="#000"/>
     <polygon points="263,90 581,90 581,86 263,86" fill="#ffed00"/>
     <text x="440" y="70" class="lbls" fill="#888">PV COVER open 60° (co-axial rear hinge)</text>
     <!-- hinges -->
@@ -227,11 +227,11 @@ table.parts td.m { font-weight: 600; }
     <text x="708" y="514" class="trow">Empty weight</text><text x="932" y="514" class="tval" text-anchor="end">≈ 48 kg</text>
     <text x="708" y="527" class="trow">Loaded</text><text x="932" y="527" class="tval" text-anchor="end">≈ 63 kg (+15 kg)</text>
     <text x="708" y="540" class="trow">Insulation</text><text x="932" y="540" class="tval" text-anchor="end">VIP 25 mm</text>
-    <text x="708" y="553" class="trow">Colors</text><text x="932" y="553" class="tval" text-anchor="end">RAL 7021 + 1023</text>
+    <text x="708" y="553" class="trow">Colors</text><text x="932" y="553" class="tval" text-anchor="end">RAL 9003 + 1023</text>
   </svg>
   </div>
   <div class="legend">
-    <span><i style="background:#33333a"></i>HDPE RAL 7021</span>
+    <span><i style="background:#f8f8f5"></i>HDPE white (RAL 9003)</span>
     <span><i style="background:#ffed00"></i>RAL 1023 accent</span>
     <span><i style="background:#16233e"></i>mono PV cell</span>
     <span><i style="background:#c0c0c0"></i>stainless</span>
@@ -250,7 +250,7 @@ table.parts td.m { font-weight: 600; }
     <rect x="80"  y="80" width="12"  height="140" fill="#f5f2ea" stroke="#000"/><text x="86" y="235" class="lbls" text-anchor="middle">liner 2</text>
     <rect x="92"  y="80" width="78"  height="140" fill="#7fb3d3" stroke="#000"/><text x="131" y="235" class="lbls" text-anchor="middle">PCM 13</text>
     <rect x="170" y="80" width="150" height="140" fill="#d4c89a" stroke="#000"/><text x="245" y="235" class="lbls" text-anchor="middle">VIP 25 (k 0,0075 aged)</text>
-    <rect x="320" y="80" width="12"  height="140" fill="#3a3a3e" stroke="#000"/><text x="326" y="235" class="lbls" text-anchor="middle">HDPE 2</text>
+    <rect x="320" y="80" width="12"  height="140" fill="#f8f8f5" stroke="#000"/><text x="326" y="235" class="lbls" text-anchor="middle">HDPE 2</text>
     <!-- vacuum indicator -->
     <g stroke="#8a8a8a" stroke-width="0.8">
       <line x1="180" y1="95" x2="310" y2="95"/><line x1="180" y1="105" x2="310" y2="105"/>
@@ -293,7 +293,7 @@ table.parts td.m { font-weight: 600; }
   <div class="dwg">
   <svg viewBox="0 0 960 700" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Arial, sans-serif">
     <!-- ── COLD BOX cutaway ── -->
-    <rect x="130" y="60" width="420" height="300" fill="#2a2a2e" stroke="#000"/>
+    <rect x="130" y="60" width="420" height="300" fill="#f7f7f5" stroke="#000"/>
     <rect x="148" y="78" width="384" height="264" fill="#d4c89a" stroke="#000" stroke-width="0.7"/>
     <rect x="166" y="96" width="348" height="228" fill="#f5f2ea" stroke="#000" stroke-width="0.5"/>
     <rect x="172" y="102" width="336" height="216" fill="#eaf6ff" stroke="#7fb3d3"/>
@@ -326,16 +326,16 @@ table.parts td.m { font-weight: 600; }
     <rect x="474" y="106" width="16" height="11" fill="#eee" stroke="#aaa" stroke-width="0.5"/>
     <text x="482" y="115" font-size="5" fill="#888" text-anchor="middle">SiO₂</text>
     <!-- lid open above -->
-    <polygon points="130,30 550,30 550,58 130,58" fill="#33333a" stroke="#000"/>
+    <polygon points="130,30 550,30 550,58 130,58" fill="#fbfbfa" stroke="#000"/>
     <polygon points="130,30 550,30 550,52 130,52" fill="#d4c89a" stroke="#b8a870" stroke-width="0.5"/>
     <rect x="130" y="56" width="420" height="3" fill="#ffed00"/>
-    <text x="340" y="46" class="lbls" text-anchor="middle" fill="#ccc">LID (skin 2 · VIP 25 · liner 2) + double-lip gasket</text>
+    <text x="340" y="46" class="lbls" text-anchor="middle" fill="#888">LID (skin 2 · VIP 25 · liner 2) + double-lip gasket</text>
     <!-- ── separator ── -->
     <rect x="130" y="360" width="420" height="11" fill="#8b6914" stroke="#5a4500"/>
     <rect x="130" y="371" width="420" height="4" fill="#bbb" stroke="#888" stroke-width="0.5"/>
     <text x="340" y="369" font-size="7.5" fill="#fff" text-anchor="middle" font-weight="700">SEPARATOR PUR 15 + AL 2 · sealed suction gland</text>
     <!-- ── MACHINE TIER 480×340×320, origin at (150,385), scale 0.75 → 360×255×240 px; use x0=150 y0=390 kx=0.72 ky=0.68 ── -->
-    <rect x="150" y="390" width="345" height="230" fill="#141416" stroke="#000"/>
+    <rect x="150" y="390" width="345" height="230" fill="#f4f4f2" stroke="#000"/>
     <!-- battery 0-329,0-172,0-214 → x:150+236=386? scale 0.72: 329*0.72=237, 172*0.72=124, 214*0.68=146 -->
     <rect x="155" y="395" width="237" height="124" fill="#1a3a5c" stroke="#2d6080"/>
     <text x="273" y="452" fill="#60aadd" font-size="9" text-anchor="middle" font-weight="700">BATTERY LiFePO4 100 Ah</text>
